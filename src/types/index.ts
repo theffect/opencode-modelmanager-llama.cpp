@@ -4,6 +4,8 @@ export interface LlamaCppModel {
     object: string
     created: number
     owned_by: string
+    meta?: Record<string, any>
+    status?: Record<string, any>
 }
 
 export interface LlamaCppModelsResponse {
