@@ -179,6 +179,137 @@ describe('Llama.cpp Plugin', () => {
                     name: 'New Model'
                 })
             })
+            expect(config.provider['llama.cpp'].models['new-model']).not.toHaveProperty('limit')
+        })
+
+        it('should set model context limit from meta.n_ctx', async () => {
+            mockFetch.mockResolvedValue({
+                ok: true,
+                json: async () => ({
+                    data: [
+                        {
+                            id: 'model-with-meta',
+                            object: 'model',
+                            created: 1234567890,
+                            owned_by: 'llamacpp',
+                            meta: {
+                                n_ctx: 32768,
+                                n_ctx_train: 32768,
+                                n_embd: 4096
+                            }
+                        },
+                        {id: 'model-without-meta', object: 'model', created: 1234567890, owned_by: 'local'}
+                    ]
+                })
+            })
+
+            const config: any = {
+                provider: {
+                    'llama.cpp': {
+                        npm: '@ai-sdk/openai-compatible',
+                        options: {baseURL: 'http://127.0.0.1:1234/v1'},
+                        models: {}
+                    }
+                }
+            }
+
+            await pluginHooks.config(config)
+
+            expect(config.provider['llama.cpp'].models['model-with-meta']).toEqual(
+                expect.objectContaining({
+                    id: 'model-with-meta',
+                    limit: {context: 32768, output: 32768}
+                })
+            )
+            expect(config.provider['llama.cpp'].models['model-without-meta']).not.toHaveProperty('limit')
+        })
+
+        it('should read context length from status.args when model is not loaded', async () => {
+            mockFetch.mockResolvedValue({
+                ok: true,
+                json: async () => ({
+                    data: [
+                        {
+                            id: 'fit-ctx-model',
+                            object: 'model',
+                            created: 1234567890,
+                            owned_by: 'llamacpp',
+                            status: {
+                                value: 'unloaded',
+                                args: ['--fit', 'on', '--fit-ctx', '8192']
+                            }
+                        },
+                        {
+                            id: 'ctx-size-model',
+                            object: 'model',
+                            created: 1234567890,
+                            owned_by: 'llamacpp',
+                            status: {
+                                value: 'unloaded',
+                                args: ['--ctx-size', '16384', '--fit', 'off']
+                            }
+                        },
+                        {
+                            id: 'both-flags-model',
+                            object: 'model',
+                            created: 1234567890,
+                            owned_by: 'llamacpp',
+                            status: {
+                                value: 'unloaded',
+                                args: ['--ctx-size', '16384', '--fit-ctx', '8192']
+                            }
+                        },
+                        {
+                            id: 'meta-wins-model',
+                            object: 'model',
+                            created: 1234567890,
+                            owned_by: 'llamacpp',
+                            meta: {n_ctx: 4096},
+                            status: {
+                                value: 'loaded',
+                                args: ['--ctx-size', '16384']
+                            }
+                        }
+                    ]
+                })
+            })
+
+            const config: any = {
+                provider: {
+                    'llama.cpp': {
+                        npm: '@ai-sdk/openai-compatible',
+                        options: {baseURL: 'http://127.0.0.1:1234/v1'},
+                        models: {}
+                    }
+                }
+            }
+
+            await pluginHooks.config(config)
+
+            expect(config.provider['llama.cpp'].models['fit-ctx-model']).toEqual(
+                expect.objectContaining({
+                    id: 'fit-ctx-model',
+                    limit: {context: 8192, output: 8192}
+                })
+            )
+            expect(config.provider['llama.cpp'].models['ctx-size-model']).toEqual(
+                expect.objectContaining({
+                    id: 'ctx-size-model',
+                    limit: {context: 16384, output: 16384}
+                })
+            )
+            expect(config.provider['llama.cpp'].models['both-flags-model']).toEqual(
+                expect.objectContaining({
+                    id: 'both-flags-model',
+                    limit: {context: 16384, output: 16384}
+                })
+            )
+            expect(config.provider['llama.cpp'].models['meta-wins-model']).toEqual(
+                expect.objectContaining({
+                    id: 'meta-wins-model',
+                    limit: {context: 4096, output: 4096}
+                })
+            )
         })
 
         it('should handle llama.cpp offline gracefully', async () => {

@@ -7,6 +7,23 @@ import type {LlamaCppModel} from '../types'
 
 const modelStatusCache = new ModelStatusCache()
 
+// Read the value of a flag from llama-server args ("--flag value" or "--flag=value").
+// llama.cpp guarantees well-formed flags and numeric values.
+function readFlagValue(args: string[] | undefined, flag: string): number | undefined {
+    if (!args?.length) {
+        return undefined
+    }
+    for (let i = 0; i < args.length; i++) {
+        if (args[i].startsWith(`${flag}=`)) {
+            return Number(args[i].slice(flag.length + 1))
+        }
+        if (args[i] === flag) {
+            return Number(args[i + 1])
+        }
+    }
+    return undefined
+}
+
 export async function enhanceConfig(
     config: any,
     _client: PluginInput['client'], // client not used but kept for interface compatibility
@@ -100,6 +117,18 @@ export async function enhanceConfig(
                         modelConfig.modalities = {
                             input: ["text", "image"],
                             output: ["text"]
+                        }
+                    }
+
+                    // Set context limit from model metadata (meta.n_ctx when loaded),
+                    // falling back to the server args in status for unloaded models
+                    const nCtx = model.meta?.n_ctx
+                        ?? readFlagValue(model.status?.args, '--ctx-size')
+                        ?? readFlagValue(model.status?.args, '--fit-ctx')
+                    if (nCtx !== undefined) {
+                        modelConfig.limit = {
+                            context: nCtx,
+                            output: nCtx
                         }
                     }
 
